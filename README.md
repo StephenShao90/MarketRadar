@@ -1,10 +1,11 @@
 # Market Signal Radar
 
-A self-contained prototype for a live technical-stock scanner. It scans a broad demo universe, looks for confluence across the indicator combinations from the reference guide, and surfaces long, short, or watch-only setups with a reason, confidence score, risk area, target area, and estimated signal window.
+A self-contained prototype for a technical-stock scanner. It scans a broad demo universe, looks for confluence across the indicator combinations from the reference guide, and surfaces long, short, or watch-only setups with a reason, confidence score, stop-loss, take-profit, and estimated signal window.
 
 ## What is included
 
 - Broad-market scanner UI with filters for trading style, direction, confidence, and symbol.
+- Adjustable scan rate: 2, 4, 10, or 30 seconds.
 - Indicator logic for EMA, MACD, RSI, VWAP, Bollinger Bands, Stochastic, ADX approximation, ATR, OBV, pivots, and support/resistance zones.
 - Alert feed for fresh high-confidence signals.
 - Optional browser notifications.
@@ -32,7 +33,7 @@ npx netlify deploy --prod --dir .
 
 ## Live data path
 
-This prototype currently uses simulated market candles so it can run without API keys. To make it truly live, connect a market-data provider in `app.js` where `seedMarket()` and `advanceMarket()` create and update candles.
+This prototype currently uses simulated market candles so it can run without API keys. The UI labels this as demo quotes because those values are not live market prices. To make it truly live, connect a market-data provider in `app.js` where `seedMarket()` and `advanceMarket()` create and update candles.
 
 Good provider options:
 

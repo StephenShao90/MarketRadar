@@ -86,7 +86,7 @@ select {
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: var(--shadow);
-  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  grid-template-columns: repeat(6, minmax(130px, 1fr));
   padding: 16px;
 }
 
@@ -144,7 +144,7 @@ button.secondary,
 }
 
 .market-strip {
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
 }
 
 .market-strip article {

@@ -73,6 +73,8 @@ const STRATEGIES = {
 const state = {
   running: true,
   notify: false,
+  scanRate: 4000,
+  scanTimer: null,
   tick: 0,
   alerts: [],
   symbols: seedMarket(),
@@ -86,9 +88,11 @@ const els = {
   longCount: document.querySelector("#longCount"),
   shortCount: document.querySelector("#shortCount"),
   lastScan: document.querySelector("#lastScan"),
+  dataMode: document.querySelector("#dataMode"),
   strategy: document.querySelector("#strategy"),
   direction: document.querySelector("#direction"),
   minScore: document.querySelector("#minScore"),
+  scanRate: document.querySelector("#scanRate"),
   scoreLabel: document.querySelector("#scoreLabel"),
   symbolSearch: document.querySelector("#symbolSearch"),
   toggleScan: document.querySelector("#toggleScan"),
@@ -462,12 +466,12 @@ function buildSignal(symbol, strategyId, longScore, shortScore, metrics, evidenc
   const score = Math.min(96, Math.round(50 + baseScore * 0.58));
   const bias = direction === "long" ? "Long setup" : direction === "short" ? "Short setup" : "Watch only";
   const thesis = direction === "long" ? strategy.long : direction === "short" ? strategy.short : "Signals are mixed, so the better action is to watch for confirmation.";
-  const stop = direction === "long"
+  const stopLoss = direction === "long"
     ? metrics.price - metrics.atr * 1.5
     : direction === "short"
       ? metrics.price + metrics.atr * 1.5
       : metrics.price;
-  const target = direction === "long"
+  const takeProfit = direction === "long"
     ? metrics.price + metrics.atr * 3
     : direction === "short"
       ? metrics.price - metrics.atr * 3
@@ -488,8 +492,9 @@ function buildSignal(symbol, strategyId, longScore, shortScore, metrics, evidenc
     window: direction === "hold" ? "Wait for a fresh trigger" : strategy.window,
     thesis,
     evidence,
-    stop,
-    target,
+    stopLoss,
+    takeProfit,
+    riskReward: direction === "hold" ? "No trade" : "2:1 target model",
     risk: strategy.risk,
     updatedAt: new Date()
   };
@@ -544,12 +549,13 @@ function render(signals) {
   const longs = signals.filter((signal) => signal.direction === "long").length;
   const shorts = signals.filter((signal) => signal.direction === "short").length;
 
-  els.scanStatus.textContent = state.running ? "Scanning market every 4 seconds" : "Scanner paused";
+  els.scanStatus.textContent = state.running ? `Scanning market every ${state.scanRate / 1000} seconds` : "Scanner paused";
   els.universeCount.textContent = String(UNIVERSE.length);
   els.signalCount.textContent = String(signals.length);
   els.longCount.textContent = String(longs);
   els.shortCount.textContent = String(shorts);
   els.lastScan.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  els.dataMode.textContent = "Demo quotes";
   els.scoreLabel.textContent = `${els.minScore.value}%`;
   els.alertMode.textContent = state.notify ? "Browser alerts on" : "Browser alerts off";
 
@@ -587,8 +593,8 @@ function signalCard(signal) {
       <div class="meta-grid">
         <div><span>Style</span><strong>${signal.strategy}</strong></div>
         <div><span>Window</span><strong>${signal.window}</strong></div>
-        <div><span>Stop area</span><strong>${fmt(signal.stop)}</strong></div>
-        <div><span>Target area</span><strong>${fmt(signal.target)}</strong></div>
+        <div><span>Stop-loss</span><strong>${fmt(signal.stopLoss)}</strong></div>
+        <div><span>Take-profit</span><strong>${fmt(signal.takeProfit)}</strong></div>
       </div>
       <button class="detail-button" type="button" data-detail="${signal.key}">Why this signal?</button>
     </article>
@@ -616,10 +622,10 @@ function showDetails(signal) {
     <div class="meta-grid">
       <div><span>Current price</span><strong>${fmt(signal.price)}</strong></div>
       <div><span>Trade window</span><strong>${signal.window}</strong></div>
-      <div><span>Suggested stop area</span><strong>${fmt(signal.stop)}</strong></div>
-      <div><span>Suggested target area</span><strong>${fmt(signal.target)}</strong></div>
+      <div><span>Suggested stop-loss</span><strong>${fmt(signal.stopLoss)}</strong></div>
+      <div><span>Suggested take-profit</span><strong>${fmt(signal.takeProfit)}</strong></div>
     </div>
-    <p class="risk-note">${signal.risk} This app provides technical signal research only. It does not know your financial situation, portfolio, taxes, or risk tolerance.</p>
+    <p class="risk-note">${signal.risk} Risk/reward: ${signal.riskReward}. Prices shown are demo quotes until a licensed live data provider is connected. This app provides technical signal research only. It does not know your financial situation, portfolio, taxes, or risk tolerance.</p>
   `;
   els.detailDialog.showModal();
 }
@@ -631,6 +637,11 @@ function fmt(value) {
 els.strategy.addEventListener("change", scan);
 els.direction.addEventListener("change", scan);
 els.minScore.addEventListener("input", scan);
+els.scanRate.addEventListener("change", () => {
+  state.scanRate = Number(els.scanRate.value);
+  startScanner();
+  scan();
+});
 els.symbolSearch.addEventListener("input", scan);
 els.toggleScan.addEventListener("click", () => {
   state.running = !state.running;
@@ -650,4 +661,10 @@ els.notifyButton.addEventListener("click", async () => {
 els.closeDialog.addEventListener("click", () => els.detailDialog.close());
 
 scan();
-setInterval(scan, 4000);
+startScanner();
+
+function startScanner() {
+  if (state.scanTimer) clearInterval(state.scanTimer);
+  state.scanTimer = setInterval(scan, state.scanRate);
+  els.scanStatus.textContent = state.running ? `Scanning market every ${state.scanRate / 1000} seconds` : "Scanner paused";
+}
