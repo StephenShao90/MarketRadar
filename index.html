@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Market Signal Radar</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Live technical scanner prototype</p>
+        <h1>Market Signal Radar</h1>
+      </div>
+      <div class="status-pill" id="scanStatus">Scanner warming up</div>
+    </header>
+
+    <main class="shell">
+      <section class="control-panel" aria-label="Scanner controls">
+        <div class="control-group">
+          <label for="strategy">Trading style</label>
+          <select id="strategy">
+            <option value="all">All styles</option>
+            <option value="day">Day trading</option>
+            <option value="swing">Swing trading</option>
+            <option value="scalp">Scalping</option>
+            <option value="trend">Trend following</option>
+            <option value="reversal">Reversal trading</option>
+            <option value="breakout">Breakout trading</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label for="direction">Signal direction</label>
+          <select id="direction">
+            <option value="all">Long, short, and hold</option>
+            <option value="long">Long only</option>
+            <option value="short">Short only</option>
+            <option value="hold">Hold/watch only</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label for="minScore">Minimum confidence</label>
+          <input id="minScore" type="range" min="50" max="95" value="68" />
+          <span id="scoreLabel">68%</span>
+        </div>
+
+        <div class="control-group search-group">
+          <label for="symbolSearch">Search symbol</label>
+          <input id="symbolSearch" type="search" placeholder="AAPL, NVDA, SPY..." />
+        </div>
+
+        <div class="button-row">
+          <button id="toggleScan" type="button">Pause scan</button>
+          <button id="notifyButton" type="button">Enable alerts</button>
+        </div>
+      </section>
+
+      <section class="market-strip" aria-label="Market overview">
+        <article>
+          <span>Universe</span>
+          <strong id="universeCount">0</strong>
+        </article>
+        <article>
+          <span>Signals found</span>
+          <strong id="signalCount">0</strong>
+        </article>
+        <article>
+          <span>Strong longs</span>
+          <strong id="longCount">0</strong>
+        </article>
+        <article>
+          <span>Strong shorts</span>
+          <strong id="shortCount">0</strong>
+        </article>
+        <article>
+          <span>Last scan</span>
+          <strong id="lastScan">--</strong>
+        </article>
+      </section>
+
+      <section class="workspace">
+        <aside class="alerts" aria-label="Recent alerts">
+          <div class="section-heading">
+            <h2>Alert feed</h2>
+            <span id="alertMode">Browser alerts off</span>
+          </div>
+          <div id="alertFeed" class="alert-feed"></div>
+        </aside>
+
+        <section class="signals" aria-label="Scanner results">
+          <div class="section-heading">
+            <h2>Best current setups</h2>
+            <span>Signals are educational research, not personalized financial advice.</span>
+          </div>
+          <div id="signalGrid" class="signal-grid"></div>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="detailDialog">
+      <div class="dialog-head">
+        <div>
+          <p id="detailSymbol" class="eyebrow"></p>
+          <h2 id="detailTitle"></h2>
+        </div>
+        <button id="closeDialog" type="button" aria-label="Close details">x</button>
+      </div>
+      <div id="detailBody"></div>
+    </dialog>
+
+    <script src="app.js" type="module"></script>
+  </body>
+</html>
