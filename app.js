@@ -13,6 +13,8 @@ const BASE_PRICES = {
   IWM: 206, DIA: 392, SMH: 227, XLF: 42, XLK: 216, XLE: 94, ARKK: 46, TLT: 91
 };
 
+const DEFAULT_CURRENCY = "USD";
+
 const STRATEGIES = {
   day: {
     label: "Day trading",
@@ -75,6 +77,10 @@ const state = {
   notify: false,
   scanRate: 4000,
   scanTimer: null,
+  quoteRefreshTimer: null,
+  dataMode: "Demo fallback",
+  quoteAsOf: "",
+  refreshingQuotes: false,
   tick: 0,
   alerts: [],
   symbols: seedMarket(),
@@ -110,7 +116,7 @@ const els = {
 function seedMarket() {
   return UNIVERSE.map((symbol, index) => {
     const candles = makeCandles(BASE_PRICES[symbol], index);
-    return { symbol, candles, lastSignalKey: "" };
+    return { symbol, candles, currency: DEFAULT_CURRENCY, quote: null, lastSignalKey: "" };
   });
 }
 
@@ -144,6 +150,8 @@ function seededNoise(value) {
 function advanceMarket() {
   state.tick += 1;
   state.symbols = state.symbols.map((item, index) => {
+    if (item.quote) return item;
+
     const last = item.candles[item.candles.length - 1];
     const pulse = Math.sin((state.tick + index) / 5) * 0.004;
     const random = (Math.random() - 0.5) * 0.018;
@@ -156,6 +164,55 @@ function advanceMarket() {
     const candles = item.candles.slice(-129).concat({ open, high, low, close, volume });
     return { ...item, candles };
   });
+}
+
+async function refreshLiveQuotes() {
+  if (state.refreshingQuotes) return;
+
+  state.refreshingQuotes = true;
+  state.dataMode = "Refreshing USD quotes";
+  renderCurrentScan();
+
+  try {
+    const response = await fetch(`/api/quotes?symbols=${encodeURIComponent(UNIVERSE.join(","))}`, {
+      cache: "no-store"
+    });
+    if (!response.ok) throw new Error("Quote request failed");
+
+    const payload = await response.json();
+    const quotes = Array.isArray(payload.quotes) ? payload.quotes : [];
+    const quoteMap = new Map(quotes.filter((quote) => Number.isFinite(quote.close)).map((quote) => [quote.symbol, quote]));
+
+    state.symbols = state.symbols.map((item) => {
+      const quote = quoteMap.get(item.symbol);
+      if (!quote) return item;
+
+      const candles = item.candles.slice();
+      const previous = candles[candles.length - 2] || candles[candles.length - 1];
+      candles[candles.length - 1] = {
+        open: quote.open || previous.close,
+        high: quote.high || quote.close,
+        low: quote.low || quote.close,
+        close: quote.close,
+        volume: quote.volume || previous.volume
+      };
+
+      return {
+        ...item,
+        candles,
+        currency: quote.currency || DEFAULT_CURRENCY,
+        quote
+      };
+    });
+
+    state.quoteAsOf = payload.asOf || new Date().toISOString();
+    state.dataMode = quotes.length ? "USD delayed quotes" : "Demo fallback";
+  } catch (error) {
+    state.dataMode = "Demo fallback";
+  } finally {
+    state.refreshingQuotes = false;
+    scan();
+  }
 }
 
 function ema(values, period) {
@@ -259,7 +316,7 @@ function estimateAdx(candles) {
 }
 
 function analyzeSymbol(item) {
-  const { candles, symbol } = item;
+  const { candles, symbol, currency } = item;
   const closes = candles.map((candle) => candle.close);
   const last = candles[candles.length - 1];
   const previous = candles[candles.length - 2];
@@ -285,6 +342,7 @@ function analyzeSymbol(item) {
 
   const metrics = {
     price: last.close,
+    currency: currency || DEFAULT_CURRENCY,
     change,
     ema9,
     ema20,
@@ -488,6 +546,7 @@ function buildSignal(symbol, strategyId, longScore, shortScore, metrics, evidenc
     bias,
     score,
     price: metrics.price,
+    currency: metrics.currency || DEFAULT_CURRENCY,
     change: metrics.change,
     window: direction === "hold" ? "Wait for a fresh trigger" : strategy.window,
     thesis,
@@ -502,7 +561,10 @@ function buildSignal(symbol, strategyId, longScore, shortScore, metrics, evidenc
 
 function scan() {
   if (state.running) advanceMarket();
+  renderCurrentScan();
+}
 
+function renderCurrentScan() {
   let signals = state.symbols.map((item) => {
     const signal = analyzeSymbol(item);
     maybeAlert(item, signal);
@@ -555,7 +617,9 @@ function render(signals) {
   els.longCount.textContent = String(longs);
   els.shortCount.textContent = String(shorts);
   els.lastScan.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  els.dataMode.textContent = "Demo quotes";
+  els.dataMode.textContent = state.quoteAsOf
+    ? `${state.dataMode} ${new Date(state.quoteAsOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+    : state.dataMode;
   els.scoreLabel.textContent = `${els.minScore.value}%`;
   els.alertMode.textContent = state.notify ? "Browser alerts on" : "Browser alerts off";
 
@@ -581,7 +645,7 @@ function signalCard(signal) {
       <div class="card-top">
         <div>
           <div class="ticker">${signal.symbol}</div>
-          <div class="price">${fmt(signal.price)} ${signal.change >= 0 ? "+" : ""}${signal.change.toFixed(2)}%</div>
+          <div class="price">${fmt(signal.price, signal.currency)} ${signal.change >= 0 ? "+" : ""}${signal.change.toFixed(2)}%</div>
         </div>
         <span class="badge ${signal.direction}">${signal.direction}</span>
       </div>
@@ -593,8 +657,8 @@ function signalCard(signal) {
       <div class="meta-grid">
         <div><span>Style</span><strong>${signal.strategy}</strong></div>
         <div><span>Window</span><strong>${signal.window}</strong></div>
-        <div><span>Stop-loss</span><strong>${fmt(signal.stopLoss)}</strong></div>
-        <div><span>Take-profit</span><strong>${fmt(signal.takeProfit)}</strong></div>
+        <div><span>Stop-loss</span><strong>${fmt(signal.stopLoss, signal.currency)}</strong></div>
+        <div><span>Take-profit</span><strong>${fmt(signal.takeProfit, signal.currency)}</strong></div>
       </div>
       <button class="detail-button" type="button" data-detail="${signal.key}">Why this signal?</button>
     </article>
@@ -605,7 +669,7 @@ function alertItem(signal) {
   return `
     <article class="alert ${signal.direction}">
       <small>${signal.updatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })} - ${signal.strategy}</small>
-      <h3>${signal.symbol}: ${signal.bias} at ${fmt(signal.price)}</h3>
+      <h3>${signal.symbol}: ${signal.bias} at ${fmt(signal.price, signal.currency)}</h3>
       <p>${signal.thesis} Estimated window: ${signal.window}.</p>
     </article>
   `;
@@ -620,18 +684,19 @@ function showDetails(signal) {
       ${signal.evidence.map((item) => `<li>${item}</li>`).join("")}
     </ul>
     <div class="meta-grid">
-      <div><span>Current price</span><strong>${fmt(signal.price)}</strong></div>
+      <div><span>Current price</span><strong>${fmt(signal.price, signal.currency)}</strong></div>
       <div><span>Trade window</span><strong>${signal.window}</strong></div>
-      <div><span>Suggested stop-loss</span><strong>${fmt(signal.stopLoss)}</strong></div>
-      <div><span>Suggested take-profit</span><strong>${fmt(signal.takeProfit)}</strong></div>
+      <div><span>Suggested stop-loss</span><strong>${fmt(signal.stopLoss, signal.currency)}</strong></div>
+      <div><span>Suggested take-profit</span><strong>${fmt(signal.takeProfit, signal.currency)}</strong></div>
     </div>
-    <p class="risk-note">${signal.risk} Risk/reward: ${signal.riskReward}. Prices shown are demo quotes until a licensed live data provider is connected. This app provides technical signal research only. It does not know your financial situation, portfolio, taxes, or risk tolerance.</p>
+    <p class="risk-note">${signal.risk} Risk/reward: ${signal.riskReward}. Prices are shown in ${signal.currency}. Quotes are delayed unless your own real-time market-data provider is connected. This app provides technical signal research only. It does not know your financial situation, portfolio, taxes, or risk tolerance.</p>
   `;
   els.detailDialog.showModal();
 }
 
-function fmt(value) {
-  return `$${Number(value).toFixed(value > 1000 ? 0 : 2)}`;
+function fmt(value, currency = DEFAULT_CURRENCY) {
+  const amount = Number(value).toFixed(value > 1000 ? 0 : 2);
+  return `${currency} $${amount}`;
 }
 
 els.strategy.addEventListener("change", scan);
@@ -662,6 +727,8 @@ els.closeDialog.addEventListener("click", () => els.detailDialog.close());
 
 scan();
 startScanner();
+refreshLiveQuotes();
+state.quoteRefreshTimer = setInterval(refreshLiveQuotes, 60000);
 
 function startScanner() {
   if (state.scanTimer) clearInterval(state.scanTimer);

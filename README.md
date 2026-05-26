@@ -1,11 +1,12 @@
 # Market Signal Radar
 
-A self-contained prototype for a technical-stock scanner. It scans a broad demo universe, looks for confluence across the indicator combinations from the reference guide, and surfaces long, short, or watch-only setups with a reason, confidence score, stop-loss, take-profit, and estimated signal window.
+A technical-stock scanner prototype. It refreshes delayed USD quotes through a Vercel API route, scans a broad demo universe, looks for confluence across the indicator combinations from the reference guide, and surfaces long, short, or watch-only setups with a reason, confidence score, stop-loss, take-profit, and estimated signal window.
 
 ## What is included
 
 - Broad-market scanner UI with filters for trading style, direction, confidence, and symbol.
 - Adjustable scan rate: 2, 4, 10, or 30 seconds.
+- Delayed quote refresh with currency labels for price, stop-loss, and take-profit.
 - Indicator logic for EMA, MACD, RSI, VWAP, Bollinger Bands, Stochastic, ADX approximation, ATR, OBV, pivots, and support/resistance zones.
 - Alert feed for fresh high-confidence signals.
 - Optional browser notifications.
@@ -33,7 +34,7 @@ npx netlify deploy --prod --dir .
 
 ## Live data path
 
-This prototype currently uses simulated market candles so it can run without API keys. The UI labels this as demo quotes because those values are not live market prices. To make it truly live, connect a market-data provider in `app.js` where `seedMarket()` and `advanceMarket()` create and update candles.
+This prototype uses delayed quote snapshots for displayed prices and simulated intraday candles for the technical history. To make the full scanner institution-grade and real-time, connect a licensed market-data provider in `api/quotes.js` and replace the simulated candle path in `app.js` with historical and streaming candles.
 
 Good provider options:
 
