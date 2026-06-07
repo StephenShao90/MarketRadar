@@ -7,7 +7,8 @@ A technical-stock scanner prototype. It refreshes delayed USD quotes through a V
 - Broad-market scanner UI with filters for trading style, direction, confidence, and symbol.
 - Adjustable scan rate: 2, 4, 10, or 30 seconds.
 - Delayed quote refresh with currency labels for price, stop-loss, and take-profit.
-- Indicator logic for EMA, MACD, RSI, VWAP, Bollinger Bands, Stochastic, ADX approximation, ATR, OBV, pivots, and support/resistance zones.
+- Indicator logic for EMA, MACD, RSI, MFI, VWAP, Bollinger Bands, Keltner Channels, Stochastic, Williams %R, ADX approximation, Supertrend, ATR, OBV, Ichimoku Cloud, Donchian Channels, pivots, and support/resistance zones.
+- More precise trade-window estimates that adjust for volatility, volume expansion, trend strength, and signal confidence.
 - Alert feed for fresh high-confidence signals.
 - Optional browser notifications.
 - Clear educational-use guardrails so outputs are not presented as personalized financial advice.

@@ -19,55 +19,55 @@ const STRATEGIES = {
   day: {
     label: "Day trading",
     timeframe: "1m to 15m",
-    indicators: ["VWAP", "RSI", "Volume"],
-    long: "Price reclaims VWAP, RSI is above 50, and volume is expanding.",
-    short: "Price rejects VWAP, RSI is below 50, and sellers arrive on volume.",
-    window: "10 to 45 minutes",
+    indicators: ["VWAP", "RSI", "MFI", "Volume"],
+    long: "Price reclaims VWAP, RSI is above 50, MFI confirms money flow, and volume is expanding.",
+    short: "Price rejects VWAP, RSI is below 50, MFI confirms selling pressure, and sellers arrive on volume.",
+    window: "8 to 30 minutes",
     risk: "Use VWAP as the invalidation area and target at least 2:1 reward to risk."
   },
   swing: {
     label: "Swing trading",
     timeframe: "4H to Daily",
-    indicators: ["EMA 20/50", "MACD", "Fibonacci"],
-    long: "EMA trend turns up near a pullback level while MACD crosses bullish.",
-    short: "EMA trend rolls over near resistance while MACD crosses bearish.",
-    window: "1 to 5 sessions",
+    indicators: ["EMA 20/50", "MACD", "Ichimoku", "Fibonacci"],
+    long: "EMA trend turns up near a pullback level while MACD and Ichimoku cloud bias confirm.",
+    short: "EMA trend rolls over near resistance while MACD and Ichimoku cloud bias confirm.",
+    window: "2 to 7 trading days",
     risk: "Stop beyond the prior swing point; avoid oversized positions before earnings."
   },
   scalp: {
     label: "Scalping",
     timeframe: "1m to 5m",
-    indicators: ["Bollinger Bands", "Stochastic", "Volume"],
-    long: "Price stretches into the lower band, Stochastic turns up from oversold, and volume surges.",
-    short: "Price rejects the upper band, Stochastic turns down from overbought, and volume confirms.",
-    window: "2 to 12 minutes",
+    indicators: ["Bollinger Bands", "Keltner Channels", "Stochastic", "Williams %R"],
+    long: "Price stretches into the lower band/Keltner zone while Stochastic and Williams %R turn up from oversold.",
+    short: "Price rejects the upper band/Keltner zone while Stochastic and Williams %R turn down from overbought.",
+    window: "1 to 6 minutes",
     risk: "Keep stops tight, usually 0.5x to 1x ATR, and take partials quickly."
   },
   trend: {
     label: "Trend following",
     timeframe: "Daily to Weekly",
-    indicators: ["EMA 200", "ADX", "ATR"],
-    long: "Price is above the 200 EMA and ADX confirms trend strength.",
-    short: "Price is below the 200 EMA and ADX confirms trend strength.",
-    window: "Several days to weeks",
+    indicators: ["EMA 200", "ADX", "Supertrend", "ATR"],
+    long: "Price is above the 200 EMA, Supertrend is positive, and ADX confirms trend strength.",
+    short: "Price is below the 200 EMA, Supertrend is negative, and ADX confirms trend strength.",
+    window: "5 to 20 trading days",
     risk: "Trail with roughly 2x ATR and reduce exposure when ADX fades."
   },
   reversal: {
     label: "Reversal trading",
     timeframe: "1H to 4H",
-    indicators: ["RSI", "Volume Profile", "S&R"],
-    long: "RSI divergence appears near support and price rejects a high-volume area.",
-    short: "RSI divergence appears near resistance and price fails at a high-volume area.",
-    window: "30 minutes to 2 sessions",
+    indicators: ["RSI", "MFI", "Williams %R", "S&R"],
+    long: "RSI/MFI divergence appears near support and Williams %R turns up from an extreme.",
+    short: "RSI/MFI divergence appears near resistance and Williams %R turns down from an extreme.",
+    window: "2 hours to 2 trading days",
     risk: "Stop beyond the key level; target the next high-volume node."
   },
   breakout: {
     label: "Breakout trading",
     timeframe: "15m to 1H",
-    indicators: ["Bollinger Bands", "Volume", "Pivot Points"],
-    long: "A volatility squeeze breaks above resistance with volume above average.",
-    short: "A volatility squeeze breaks below support with volume above average.",
-    window: "15 minutes to 3 hours",
+    indicators: ["Bollinger Bands", "Donchian Channels", "Volume", "Pivot Points"],
+    long: "A volatility squeeze breaks above the Donchian high/resistance with volume above average.",
+    short: "A volatility squeeze breaks below the Donchian low/support with volume above average.",
+    window: "20 minutes to 1 trading day",
     risk: "Stop back inside the prior range and use pivot extensions for targets."
   }
 };
@@ -315,6 +315,90 @@ function estimateAdx(candles) {
   return Math.min(55, Math.max(8, (recentChange / Math.max(0.01, averageRange)) * 8));
 }
 
+function moneyFlowIndex(candles, period = 14) {
+  const slice = candles.slice(-(period + 1));
+  let positive = 0;
+  let negative = 0;
+
+  for (let i = 1; i < slice.length; i += 1) {
+    const previousTypical = (slice[i - 1].high + slice[i - 1].low + slice[i - 1].close) / 3;
+    const typical = (slice[i].high + slice[i].low + slice[i].close) / 3;
+    const flow = typical * slice[i].volume;
+    if (typical >= previousTypical) positive += flow;
+    else negative += flow;
+  }
+
+  if (negative === 0) return 100;
+  const ratio = positive / negative;
+  return 100 - 100 / (1 + ratio);
+}
+
+function williamsR(candles, period = 14) {
+  const slice = candles.slice(-period);
+  const high = Math.max(...slice.map((candle) => candle.high));
+  const low = Math.min(...slice.map((candle) => candle.low));
+  const close = candles[candles.length - 1].close;
+  return ((high - close) / Math.max(0.01, high - low)) * -100;
+}
+
+function donchian(candles, period = 20) {
+  const slice = candles.slice(-period);
+  return {
+    high: Math.max(...slice.map((candle) => candle.high)),
+    low: Math.min(...slice.map((candle) => candle.low))
+  };
+}
+
+function keltner(candles, period = 20, multiplier = 1.5) {
+  const typical = candles.map((candle) => (candle.high + candle.low + candle.close) / 3);
+  const mid = ema(typical, period).at(-1);
+  const range = atr(candles, period);
+  return {
+    upper: mid + range * multiplier,
+    mid,
+    lower: mid - range * multiplier
+  };
+}
+
+function ichimoku(candles) {
+  const highLowMid = (period) => {
+    const slice = candles.slice(-period);
+    const high = Math.max(...slice.map((candle) => candle.high));
+    const low = Math.min(...slice.map((candle) => candle.low));
+    return (high + low) / 2;
+  };
+
+  const conversion = highLowMid(9);
+  const base = highLowMid(26);
+  const spanA = (conversion + base) / 2;
+  const spanB = highLowMid(52);
+  const close = candles[candles.length - 1].close;
+
+  return {
+    conversion,
+    base,
+    spanA,
+    spanB,
+    bullish: close > Math.max(spanA, spanB) && conversion > base,
+    bearish: close < Math.min(spanA, spanB) && conversion < base
+  };
+}
+
+function supertrend(candles, period = 10, multiplier = 3) {
+  const last = candles[candles.length - 1];
+  const mid = (last.high + last.low) / 2;
+  const range = atr(candles, period);
+  const lower = mid - range * multiplier;
+  const upper = mid + range * multiplier;
+
+  return {
+    lower,
+    upper,
+    bullish: last.close > lower && last.close > sma(candles.map((candle) => candle.close), 20),
+    bearish: last.close < upper && last.close < sma(candles.map((candle) => candle.close), 20)
+  };
+}
+
 function analyzeSymbol(item) {
   const { candles, symbol, currency } = item;
   const closes = candles.map((candle) => candle.close);
@@ -329,8 +413,14 @@ function analyzeSymbol(item) {
   const atrValue = atr(candles);
   const stochValue = stochastic(candles);
   const bands = bollinger(candles);
+  const keltnerValue = keltner(candles);
+  const donchianValue = donchian(candles);
+  const ichimokuValue = ichimoku(candles);
+  const supertrendValue = supertrend(candles);
   const vwapValue = vwap(candles);
   const adxValue = estimateAdx(candles);
+  const mfiValue = moneyFlowIndex(candles);
+  const williamsValue = williamsR(candles);
   const avgVolume = sma(candles.map((candle) => candle.volume), 20);
   const volumeRatio = last.volume / avgVolume;
   const obvNow = obv(candles.slice(-45));
@@ -352,7 +442,13 @@ function analyzeSymbol(item) {
     macd: macdValue,
     atr: atrValue,
     stochastic: stochValue,
+    williamsR: williamsValue,
+    mfi: mfiValue,
     bands,
+    keltner: keltnerValue,
+    donchian: donchianValue,
+    ichimoku: ichimokuValue,
+    supertrend: supertrendValue,
     vwap: vwapValue,
     adx: adxValue,
     volumeRatio,
@@ -376,88 +472,101 @@ function analyzeSymbol(item) {
 
 function scoreDay(symbol, m) {
   const longScore = points([
-    [m.price > m.vwap, 24],
-    [m.rsi > 50, 18],
+    [m.price > m.vwap, 22],
+    [m.rsi > 50, 16],
+    [m.mfi > 50, 12],
     [m.volumeRatio > 1.25, 18],
-    [m.change > 0.15, 12],
-    [m.obvTrend > 0, 10]
+    [m.change > 0.15, 10],
+    [m.obvTrend > 0, 8]
   ]);
   const shortScore = points([
-    [m.price < m.vwap, 24],
-    [m.rsi < 50, 18],
+    [m.price < m.vwap, 22],
+    [m.rsi < 50, 16],
+    [m.mfi < 50, 12],
     [m.volumeRatio > 1.25, 18],
-    [m.change < -0.15, 12],
-    [m.obvTrend < 0, 10]
+    [m.change < -0.15, 10],
+    [m.obvTrend < 0, 8]
   ]);
   return buildSignal(symbol, "day", longScore, shortScore, m, [
     `VWAP ${fmt(m.vwap)}`,
     `RSI ${m.rsi.toFixed(0)}`,
+    `MFI ${m.mfi.toFixed(0)}`,
     `Volume ${m.volumeRatio.toFixed(1)}x average`
   ]);
 }
 
 function scoreSwing(symbol, m) {
   const longScore = points([
-    [m.ema20 > m.ema50, 25],
+    [m.ema20 > m.ema50, 22],
     [m.price > m.ema20, 14],
-    [m.macd.histogram > 0 && m.macd.previousHistogram <= m.macd.histogram, 20],
+    [m.macd.histogram > 0 && m.macd.previousHistogram <= m.macd.histogram, 18],
+    [m.ichimoku.bullish, 16],
     [m.rsi > 48 && m.rsi < 70, 12],
-    [m.price > m.pivot, 10]
+    [m.price > m.pivot, 8]
   ]);
   const shortScore = points([
-    [m.ema20 < m.ema50, 25],
+    [m.ema20 < m.ema50, 22],
     [m.price < m.ema20, 14],
-    [m.macd.histogram < 0 && m.macd.previousHistogram >= m.macd.histogram, 20],
+    [m.macd.histogram < 0 && m.macd.previousHistogram >= m.macd.histogram, 18],
+    [m.ichimoku.bearish, 16],
     [m.rsi < 52 && m.rsi > 30, 12],
-    [m.price < m.pivot, 10]
+    [m.price < m.pivot, 8]
   ]);
   return buildSignal(symbol, "swing", longScore, shortScore, m, [
     `EMA 20/50 ${fmt(m.ema20)} / ${fmt(m.ema50)}`,
     `MACD histogram ${m.macd.histogram.toFixed(2)}`,
+    `Ichimoku ${m.ichimoku.bullish ? "bullish cloud" : m.ichimoku.bearish ? "bearish cloud" : "inside cloud"}`,
     `Pivot ${fmt(m.pivot)}`
   ]);
 }
 
 function scoreScalp(symbol, m) {
   const longScore = points([
-    [m.price <= m.bands.lower * 1.015, 24],
-    [m.stochastic < 35, 18],
-    [m.volumeRatio > 1.2, 16],
-    [m.rsi < 45, 10],
+    [m.price <= m.bands.lower * 1.015, 20],
+    [m.price <= m.keltner.lower * 1.015, 14],
+    [m.stochastic < 35, 15],
+    [m.williamsR < -75, 13],
+    [m.volumeRatio > 1.2, 14],
     [m.change > -2.8, 6]
   ]);
   const shortScore = points([
-    [m.price >= m.bands.upper * 0.985, 24],
-    [m.stochastic > 65, 18],
-    [m.volumeRatio > 1.2, 16],
-    [m.rsi > 55, 10],
+    [m.price >= m.bands.upper * 0.985, 20],
+    [m.price >= m.keltner.upper * 0.985, 14],
+    [m.stochastic > 65, 15],
+    [m.williamsR > -25, 13],
+    [m.volumeRatio > 1.2, 14],
     [m.change < 2.8, 6]
   ]);
   return buildSignal(symbol, "scalp", longScore, shortScore, m, [
     `Bollinger range ${fmt(m.bands.lower)} to ${fmt(m.bands.upper)}`,
+    `Keltner range ${fmt(m.keltner.lower)} to ${fmt(m.keltner.upper)}`,
     `Stochastic ${m.stochastic.toFixed(0)}`,
+    `Williams %R ${m.williamsR.toFixed(0)}`,
     `ATR ${fmt(m.atr)}`
   ]);
 }
 
 function scoreTrend(symbol, m) {
   const longScore = points([
-    [m.price > m.ema200, 26],
-    [m.ema20 > m.ema50, 16],
-    [m.adx > 25, 24],
+    [m.price > m.ema200, 24],
+    [m.ema20 > m.ema50, 14],
+    [m.adx > 25, 22],
+    [m.supertrend.bullish, 18],
     [m.rsi > 52, 8],
     [m.price > m.vwap, 6]
   ]);
   const shortScore = points([
-    [m.price < m.ema200, 26],
-    [m.ema20 < m.ema50, 16],
-    [m.adx > 25, 24],
+    [m.price < m.ema200, 24],
+    [m.ema20 < m.ema50, 14],
+    [m.adx > 25, 22],
+    [m.supertrend.bearish, 18],
     [m.rsi < 48, 8],
     [m.price < m.vwap, 6]
   ]);
   return buildSignal(symbol, "trend", longScore, shortScore, m, [
     `EMA 200 proxy ${fmt(m.ema200)}`,
     `ADX ${m.adx.toFixed(0)}`,
+    `Supertrend ${m.supertrend.bullish ? "bullish" : m.supertrend.bearish ? "bearish" : "neutral"}`,
     `ATR trail area ${fmt(m.atr * 2)}`
   ]);
 }
@@ -467,47 +576,56 @@ function scoreReversal(symbol, m, closes) {
   const priorLow = Math.min(...closes.slice(-30, -12));
   const recentHigh = Math.max(...closes.slice(-12));
   const priorHigh = Math.max(...closes.slice(-30, -12));
-  const bullishDivergence = recentLow < priorLow && m.rsi > 38;
-  const bearishDivergence = recentHigh > priorHigh && m.rsi < 62;
+  const bullishDivergence = recentLow < priorLow && m.rsi > 38 && m.mfi > 35;
+  const bearishDivergence = recentHigh > priorHigh && m.rsi < 62 && m.mfi < 65;
   const longScore = points([
-    [bullishDivergence, 25],
-    [m.price > m.rangeLow * 1.02, 18],
-    [m.rsi < 52, 12],
-    [m.volumeRatio > 1.1, 12],
-    [m.change > 0, 8]
+    [bullishDivergence, 24],
+    [m.price > m.rangeLow * 1.02, 16],
+    [m.rsi < 52, 10],
+    [m.mfi < 55, 10],
+    [m.williamsR < -70, 10],
+    [m.volumeRatio > 1.1, 10],
+    [m.change > 0, 6]
   ]);
   const shortScore = points([
-    [bearishDivergence, 25],
-    [m.price < m.rangeHigh * 0.98, 18],
-    [m.rsi > 48, 12],
-    [m.volumeRatio > 1.1, 12],
-    [m.change < 0, 8]
+    [bearishDivergence, 24],
+    [m.price < m.rangeHigh * 0.98, 16],
+    [m.rsi > 48, 10],
+    [m.mfi > 45, 10],
+    [m.williamsR > -30, 10],
+    [m.volumeRatio > 1.1, 10],
+    [m.change < 0, 6]
   ]);
   return buildSignal(symbol, "reversal", longScore, shortScore, m, [
     `Support zone ${fmt(m.rangeLow)}`,
     `Resistance zone ${fmt(m.rangeHigh)}`,
-    `RSI ${m.rsi.toFixed(0)}`
+    `RSI ${m.rsi.toFixed(0)}`,
+    `MFI ${m.mfi.toFixed(0)}`,
+    `Williams %R ${m.williamsR.toFixed(0)}`
   ]);
 }
 
 function scoreBreakout(symbol, m) {
   const squeeze = m.bands.bandwidth < 7.5;
   const longScore = points([
-    [squeeze, 18],
-    [m.price > m.rangeHigh * 0.995, 22],
-    [m.volumeRatio > 1.4, 20],
+    [squeeze, 16],
+    [m.price > m.rangeHigh * 0.995, 18],
+    [m.price >= m.donchian.high * 0.995, 18],
+    [m.volumeRatio > 1.4, 18],
     [m.price > m.pivot, 10],
     [m.rsi > 54, 8]
   ]);
   const shortScore = points([
-    [squeeze, 18],
-    [m.price < m.rangeLow * 1.005, 22],
-    [m.volumeRatio > 1.4, 20],
+    [squeeze, 16],
+    [m.price < m.rangeLow * 1.005, 18],
+    [m.price <= m.donchian.low * 1.005, 18],
+    [m.volumeRatio > 1.4, 18],
     [m.price < m.pivot, 10],
     [m.rsi < 46, 8]
   ]);
   return buildSignal(symbol, "breakout", longScore, shortScore, m, [
     `BB bandwidth ${m.bands.bandwidth.toFixed(1)}%`,
+    `Donchian ${fmt(m.donchian.low)} to ${fmt(m.donchian.high)}`,
     `Range ${fmt(m.rangeLow)} to ${fmt(m.rangeHigh)}`,
     `Volume ${m.volumeRatio.toFixed(1)}x average`
   ]);
@@ -548,7 +666,7 @@ function buildSignal(symbol, strategyId, longScore, shortScore, metrics, evidenc
     price: metrics.price,
     currency: metrics.currency || DEFAULT_CURRENCY,
     change: metrics.change,
-    window: direction === "hold" ? "Wait for a fresh trigger" : strategy.window,
+    window: direction === "hold" ? "Wait for a fresh trigger" : estimateWindow(strategyId, metrics, score),
     thesis,
     evidence,
     stopLoss,
@@ -557,6 +675,23 @@ function buildSignal(symbol, strategyId, longScore, shortScore, metrics, evidenc
     risk: strategy.risk,
     updatedAt: new Date()
   };
+}
+
+function estimateWindow(strategyId, metrics, score) {
+  const volatilityPct = (metrics.atr / Math.max(0.01, metrics.price)) * 100;
+  const highVolatility = volatilityPct > 2.4 || metrics.volumeRatio > 1.8;
+  const strongTrend = metrics.adx > 30 || score > 88;
+
+  const windows = {
+    day: highVolatility ? "5 to 18 minutes" : "12 to 35 minutes",
+    scalp: highVolatility ? "1 to 4 minutes" : "2 to 8 minutes",
+    swing: strongTrend ? "3 to 10 trading days" : "1 to 5 trading days",
+    trend: strongTrend ? "10 to 30 trading days" : "5 to 15 trading days",
+    reversal: highVolatility ? "1 to 6 hours" : "4 hours to 2 trading days",
+    breakout: highVolatility ? "20 minutes to 4 hours" : "1 hour to 1 trading day"
+  };
+
+  return windows[strategyId] || STRATEGIES[strategyId].window;
 }
 
 function scan() {
